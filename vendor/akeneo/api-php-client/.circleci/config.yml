@@ -1,0 +1,119 @@
+version: 2.1
+
+jobs:
+    build:
+        machine:
+            image: ubuntu-2004:202111-01
+        steps:
+            - run:
+                name: Change rights on project dir
+                command: sudo chmod -R 777 ../project
+            - checkout
+            -   run:
+                    name: Build project
+                    command: make dependencies
+            -   persist_to_workspace:
+                    root: ~/
+                    paths:
+                        - project
+    test_php_unit:
+        machine:
+            image: ubuntu-2004:202111-01
+        steps:
+            -   attach_workspace:
+                    at: ~/
+            -   run:
+                    name: Run PHPUnit tests
+                    command: make unit
+
+    test_php_spec:
+        machine:
+            image: ubuntu-2004:202111-01
+        steps:
+            -   attach_workspace:
+                    at: ~/
+            -   run:
+                    name: Run PHPSpec tests
+                    command:  make spec
+
+    test_php_code_style:
+        machine:
+            image: ubuntu-2004:202111-01
+        steps:
+            -   attach_workspace:
+                    at: ~/
+            -   run:
+                    name: Change rights on project dir
+                    command: sudo chmod -R 777 ../project
+            -   run:
+                    name: Launch code style checker
+                    command: make cs
+
+    workflow_success:
+        machine:
+            image: ubuntu-2004:202111-01
+        steps:
+            -   run:
+                    name: Success
+                    command: echo "The build has run with success! Let's merge :)"
+
+workflows:
+    pull_request:
+        jobs:
+            -   wait_for_user_approval:
+                    type: approval
+                    filters:
+                        branches:
+                            ignore:
+                                - master
+            -   build:
+                    requires:
+                        - wait_for_user_approval
+            -   test_php_unit:
+                    requires:
+                        - build
+            -   test_php_spec:
+                    requires:
+                        - build
+            -   test_php_code_style:
+                    requires:
+                        - build
+            -   workflow_success:
+                    requires:
+                        - test_php_unit
+                        - test_php_spec
+                        - test_php_code_style
+
+    after_merge:
+        jobs:
+            -   build:
+                    filters:
+                        branches:
+                            only:
+                                - master
+            -   test_php_unit:
+                    requires:
+                        - build
+            -   test_php_spec:
+                    requires:
+                        - build
+            -   test_php_code_style:
+                    requires:
+                        - build
+
+    nightly:
+        when:
+            and:
+                -   equal: [ scheduled_pipeline, << pipeline.trigger_source >> ]
+                -   equal: [ "nightly_master", << pipeline.schedule.name >> ]
+        jobs:
+            - build
+            -   test_php_unit:
+                    requires:
+                        - build
+            -   test_php_spec:
+                    requires:
+                        - build
+            -   test_php_code_style:
+                    requires:
+                        - build
